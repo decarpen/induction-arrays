@@ -1,0 +1,85 @@
+\begin{figure*}
+[hbtp]
+\centering
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\begin{kframe}
+\begin{verbatim}
+## Loading required package: proxy
+## Attaching package: 'proxy'
+## The following object(s) are masked from 'package:stats':
+##
+## as.dist, dist
+\end{verbatim}
+\end{kframe}\includegraphics[width=\maxwidth]{figure/p1}
+\end{knitrout}
+
+\caption{Phosphate-limited expression data. DBY12424 on left, DBY12416 (4ZEV control) on right.}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}
+[hbtp]
+\centering
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\includegraphics[width=\maxwidth]{figure/p2}
+\end{knitrout}
+
+\caption{Carbon-limited expression data. 4ZEVpr-SNF1 on left, 4ZEV control on right.}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}
+[H]
+\centering
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\includegraphics[width=\maxwidth]{figure/p3}
+\end{knitrout}
+
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}
+[hbtp]
+\centering
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\includegraphics[width=\maxwidth]{figure/p4}
+\end{knitrout}
+
+\caption{Expression of top 10\% of genes at time zero.}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}
+[here]
+\centering
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\includegraphics[width=\maxwidth]{figure/p5}
+\end{knitrout}
+
+\caption{Expression time-course for genes which had basal high expression levels in the carbon-limited chemostats.}
+\label{fig:carboncluster}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}
+
+\centering
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\includegraphics[width=\maxwidth]{figure/p8}
+\end{knitrout}
+
+\caption{Carbon-limited 4ZEVpr-SNF1 with control top three eigengenes subtracted}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}
+
+\centering
+\begin{knitrout}
+\definecolor{shadecolor}{rgb}{0.969, 0.969, 0.969}\color{fgcolor}\includegraphics[width=\maxwidth]{figure/p9}
+\end{knitrout}
+
+\caption{Phosphate-limited 4ZEVpr-Snf1 with control top three eigengenes subtracted}
+\end{figure*}
+\efloatseparator
+ 

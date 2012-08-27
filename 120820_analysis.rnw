@@ -1,0 +1,417 @@
+\documentclass[letter]{article}
+
+\usepackage{fullpage}
+%\usepackage{times}
+\usepackage{rotating}
+\usepackage{longtable}
+\usepackage{float}
+\usepackage[section]{placeins}
+
+\begin{document}
+\title{4ZEV-SNF1 Microarray Analysis}
+\author{Danielle Carpenter}
+
+\maketitle
+
+These arrays use RNA isolated from samples collected on August 8, 2012 from chemostats growing at a dilution rate of $0.18 hr^{-1}$ in both phosphate- and carbon-limited media. DBY12416 is the zinc-finger control strain which contains no zinc-finger binding sites, and DBY12424 is derived from DBY12416 but contains the zinc-finger binding sites inserted in front of the SNF1 transcription start site.
+
+<<prelim, include=FALSE, cache=FALSE>>=
+library(gridExtra)
+library(ggplot2)
+library(reshape2)
+library(impute)
+library(GOstats)
+library(GO.db)
+library(org.Sc.sgd.db)
+library(GSEABase)
+library(xtable)
+source("analysis_fxns.R")
+source("heatmap_fxn.R")
+@
+
+%-------------------------------------------------------------------------------------------------------------------
+\section*{Visualizing the Array Data}
+%-------------------------------------------------------------------------------------------------------------------
+<<importdata, include=FALSE, cache=FALSE>>=
+rawdata = read.delim("~/Documents/SCIENCE/BOTSTEIN/EXPERIMENTS/120601_ZEV_SNF1_screen/DATA/120826_PUMA_floored350.pcl")
+rawdata = rawdata[-1,-3]   #drop gene weights
+rawdata[,2] = fixNames(rawdata[,2])
+
+old.row.names = rawdata[duplicated(rawdata[,2]),2]
+data = rawdata[!duplicated(rawdata[,2]),]
+rownames(data) = rawdata[!duplicated(rawdata[,2]),2]
+data = as.matrix(data[,3:ncol(data)])
+
+#adjust column names
+strains = rep(c("12416", "12424", "12416", "12424"), each=8)
+media = rep(c("P","C"), each=16)
+time = rep(c("0","5","10","15","20","30","45","60"),4)
+clist = paste(strains,media,time,sep="_")
+colnames(data) = clist
+rm(strains,media,time,clist)
+
+sel = (rownames(data) %in% c("YFL032W", "YOR186W", "YMR007W"))
+data = data[!sel,] #appear to be outliers (all 0 w/ one point -4)
+@
+The array data was downloaded from PUMA using the filters "Final Processed Red Intensity >= 350" and "Final Processed Green Intensity >= 350" and imported into R. The file contains \Sexpr{nrow(rawdata)} rows of expression data. Several genes (\Sexpr{old.row.names}) appeared to be repeated multiple times in the data and were removed completely, resulting in expression data for \Sexpr{nrow(data)} genes.
+
+Missing values were computed using the knn imputation function provided in the impute package from Bioconductor.
+<<knn.impute, echo=FALSE, include=FALSE, cache=FALSE>>=
+imp.dat = impute.knn(data)$data
+@
+
+The data are then zero-normalized, and any genes with less than 2-fold change are dropped.
+<<zeronorm, include=FALSE, cache=FALSE>>=
+p.12416 = imp.dat[,1:8]
+p.12424 = imp.dat[,9:16]
+c.12416 = imp.dat[,17:24]
+c.12424 = imp.dat[,25:32]
+zero.dat = cbind(zeroNorm(p.12424), zeroNorm(p.12416), zeroNorm(c.12424), zeroNorm(c.12416))
+
+diff.dat = dropLow(zero.dat,1)
+
+#just each limitation change
+diff.p.dat = dropLow(cbind(zeroNorm(p.12424),zeroNorm(p.12416)),1)
+diff.c.dat = dropLow(cbind(zeroNorm(c.12424),zeroNorm(c.12416)),1)
+
+p.12416 = diff.p.dat[,9:16]
+p.12424 = diff.p.dat[,1:8]
+c.12416 = diff.c.dat[,9:16]
+c.12424 = diff.c.dat[,1:8]
+@
+There are \Sexpr{nrow(diff.dat)} genes which change by more than 2-fold across all four conditions. Of these, \Sexpr{nrow(diff.p.dat)} change by two-fold in the phosphate-limited conditions, and \Sexpr{nrow(diff.c.dat)} in the carbon limited conditions. The genes which change more than two-fold in both conditions are listed below:
+
+<<both,results='asis'>>=
+two.fold = data.frame(ORF=intersect(rownames(diff.p.dat),rownames(diff.c.dat)))
+two.fold$name = as.character(orf2name(two.fold$ORF))
+two.fold$name[which(two.fold$name=="NULL")]="-"
+two.fold$desc = orf2desc(two.fold$ORF)
+tab = xtable(two.fold,label='two.fold',caption='Genes whose expression changes by at least two-fold in both carbon and phosphate-limiting conditions.')
+print(tab,tabular.environment='longtable',floating=FALSE,include.rownames=FALSE)
+@
+
+
+\begin{figure}[hbtp]
+\centering
+<<p1,dev='pdf',fig.width=4,fig.height=8, dpi=300,echo=FALSE,results='hide'>>=
+rownames(diff.p.dat) = orf2name(rownames(diff.p.dat))
+ggheat("p_lim_twofold.pdf", diff.p.dat, c("blue","white","red"))
+@
+\caption{Phosphate-limited expression data. DBY12424 on left, DBY12416 (4ZEV control) on right.}
+\end{figure}
+
+
+\begin{figure}[hbtp]
+\centering
+<<p2,dev='pdf',fig.width=4,fig.height=8, dpi=300,echo=FALSE,results='hide'>>=
+rownames(diff.c.dat) = orf2name(rownames(diff.c.dat))
+ggheat("c_lim_twofold.pdf", diff.c.dat, c("blue","white","red"))
+@
+\caption{Carbon-limited expression data. 4ZEVpr-SNF1 on left, 4ZEV control on right.}
+\end{figure}
+
+There is significantly more signal in the 4ZEV control strain than expected, in both conditions. My first thought was that the samples were mislabeled, and I had accidentally labeled the experimental strain twice; however, looking at the expression data for \emph{SNF1}, you can see clearly that \emph{SNF1} expression changes only in the experimental strains and not in the control strains.
+\begin{figure}[H]
+\centering
+<<p3, fig.height=2, fig.width=5, echo=FALSE>>=
+snf1 = zero.dat[which(row.names(zero.dat)=="YDR477W"),]
+snf1 = as.data.frame(snf1)
+snf1$condition = row.names(snf1)
+snf1$ORF = "SNF1"
+g = ggplot(snf1, aes(x=condition, y=ORF, value=snf1))+geom_tile(aes(fill=snf1))+theme_bw() +
+           scale_fill_gradient2(low="blue",mid="white",high="red",midpoint=0, name="Fold Change") +
+           opts(axis.text.x=theme_text(angle=90, hjust=1,size=6))
+print(g)
+@
+\end{figure}
+
+%-------------------------------------------------------------------------------------------------------------------
+\section*{Analysis of the 4-ZEV Arrays}
+%-------------------------------------------------------------------------------------------------------------------
+
+I'm not sure what to make of the control expression data. Obviously, some aspect of my experimental conditions is causing a significant gene expression response in both my control and experimental data. Because this response is more significant in my carbon-limited data (i.e., many more genes respond), I'm inclined to say that this expression change is due to some change in carbon-source availability. My preliminary guess is that the process of sampling (which I had tried to minimize by taking only 5 mL of culture for each timepoint rather than the standard 10 mL) is increasing the concentration of glucose available in the vessel, causing this gene expression response. This effect may be more significant at slower growth rates.
+
+I decided to look at the zero timepoints for each chemostat, to see which genes were very highly differentially expressed across the conditions. The genes which make up the most significantly repressed cluster in the carbon-limited chemostats are \emph{PHO5}, \emph{PHM6}, \emph{SPL2}, \emph{PHO11}, \emph{PHO12}, and \emph{PHO84}. They are expressed at a much lower level than my reference RNA, a phosphate-limited chemostat at 0.15$hr^{-1}$. A cluster of genes which are highly-expressed in carbon-limited chemostats when compared to phosphate-limited chemostats includes \emph{HXT7}, \emph{HXT6}, \emph{ALD4}, and \emph{ADH2}, among other genes. There is not a significant difference in there expression in 4ZEVpr-SNF1 when compared to the 4ZEV control, indicating that these genes can be upregulated even in the absence of Snf1p. A quick GO-slim search on the cluster shows enrichment for transmembrane transport, carbohydrate metabolic process, generation of precursor metabolites and energy, and cofactor metabolic process.
+\begin{figure}[hbtp]
+\centering
+<<p4,echo=FALSE,fig.width=3,fig.height=9>>=
+#looking at just the zero timepoints.
+zeros = imp.dat[,c(9,1,25,17)]
+test = apply(zeros,1,function(x) {return(sd(x)>0.5779777)})
+high.zeros = zeros[test,]
+rownames(high.zeros) = orf2name(rownames(high.zeros))
+p = ggheat("zero_timepoints.pdf", high.zeros, c("blue","white","red"),width.adjust=2.5)
+print(p)
+@
+\caption{Expression of top 10\% of genes at time zero.}
+\end{figure}
+
+I decided to see what happened to this cluster of 35 genes that were already highly expressed at time zero in my carbon-limited samples. (Figure ~\ref{fig:carboncluster}) Over the course of the experiment, many of these genes are highly repressed in the carbon-limited vessels (with very similar expression patterns in both experimental and control), while there is not significant response in the phosphate-limited chemostats (with the exception of \emph{HXT7} and \emph{HXT6}). This repression of the cluster strongly resembles the typical response to a pulse of glucose, lending support to my idea that sampling the carbon-limited chemostats is increasing the available glucose, triggering a gene expression response.
+\begin{figure}[here]
+\centering
+<<p5,echo=FALSE>>=
+cluster = c("YBR299W", "YOL101C", "YGR292W", "YALO67C", "YPL27CW", "YKL187C", "YBR294W", "YOR388C", "YPL275W", "YML089C", "YPR002W", "YIL057C", "YPL201C", "YAR035W", "YPR001W", "YDR384C", "YDR342C", "YDR343C", "YAL054C", "YOR374W", "YKL217W", "YCR010C", "YDR536W", "YMR303C", "YLR174W", "YDR256C", "YLR377C", "YAL062W", "YOR100C", "YGL205W", "YBR068C", "YJR095W", "YLR327C", "YNL117W", "YOR178C", "YDL085W")
+up.carbon = zero.dat[which(row.names(zero.dat) %in% cluster),]
+row.names(up.carbon) = orf2name(row.names(up.carbon))
+p = ggheat("up_in_carbon_zero.pdf", up.carbon, c("blue","white","red"))
+print(p)
+@
+\caption{Expression time-course for genes which had basal high expression levels in the carbon-limited chemostats.}
+\label{fig:carboncluster}
+\end{figure}
+
+\subsection*{SVD of 4-ZEV arrays}
+I decided to see if subtracting the high control background would produce anything useful. There are three main eigengenes for both carbon and phosphate-limited control arrays, and they appear to be the reverse of each other (e.g., repression in carbon-limitation becomes activation in phosphate-limitation). It should also be noted that these three eigengenes account for a much smaller portion of the total expression fraction in the phosphate-limited chemostats, supporting the idea that the effect of sampling is much larger in carbon-limited chemostats than phosphate-limited chemostats. (Figures ~\ref{fig:csvd} and ~\ref{fig:psvd})
+\begin{sidewaysfigure}
+\centering
+<<svd-carbon,echo=FALSE, warning=FALSE,fig.width=10,height=3.5,results='hide'>>=
+s.c = svd(c.12416)
+eigengenes = t(s.c$v)
+row.names(eigengenes) = c(1,2,3,4,5,6,7,8)
+eigengenes = as.data.frame(eigengenes)
+colnames(eigengenes) = c("t_0","t_5","t_10","t_15","t_20","t_30","t_45","t_60")
+eigengenes$eigengene = rownames(eigengenes)
+eigengenes.m = melt(eigengenes,idvars=eigengene)
+eigengenes.m$eigengene = as.numeric(eigengenes.m$eigengene)
+p = ggplot(eigengenes.m,aes(x=variable,y=eigengene))+geom_tile(aes(fill=value))+scale_fill_gradient2(low="blue",mid="white",high="red",midpoint=0, name="Fold Change")+scale_y_reverse()
+
+d = s.c$d
+max.var = sum(s.c$d)
+d.scale = sapply(d, function(x) {x/max.var})
+
+d.scale = as.data.frame(d.scale)
+d.scale$eigengene = factor(seq(1,8,1),levels=seq(8,1,-1))
+
+m = ggplot(d.scale,aes(x=eigengene,y=d.scale))+geom_bar()+coord_flip()+ylab("Eigenexpression Fraction")+theme_bw()
+
+eigengenes.m.top = eigengenes.m[which(eigengenes.m$eigengene %in% c(1,2)),]
+eigengenes.m.top = droplevels(eigengenes.m.top)
+eigengenes.m.top$variable=rep(c(0,5,10,15,20,30,45,60),each=2)
+eigengenes.m.top$eigengene = as.factor(eigengenes.m.top$eigengene)
+z = ggplot(eigengenes.m.top,aes(x=variable,y=value,group=eigengene))+geom_path(aes(colour=eigengene))+geom_hline(aes(yintercept=0),linetype="dashed")+ylab("fold change")+xlab("time (min.)")+theme_bw()+opts(legend.position="bottom")
+
+pmz = grid.arrange(p,m,z,ncol=3)
+print(pmz)
+@
+\caption{SVD on carbon-limited control arrays.}
+\label{fig:csvd}
+\end{sidewaysfigure}
+
+\begin{sidewaysfigure}
+\centering
+<<svd-phosphate,echo=FALSE, warning=FALSE,fig.width=10,height=3.5,results='hide'>>=
+s.p = svd(p.12416)
+eigengenes = t(s.p$v)
+row.names(eigengenes) = c(1,2,3,4,5,6,7,8)
+eigengenes = as.data.frame(eigengenes)
+colnames(eigengenes) = c("t_0","t_5","t_10","t_15","t_20","t_30","t_45","t_60")
+eigengenes$eigengene = rownames(eigengenes)
+eigengenes.m = melt(eigengenes,idvars=eigengene)
+eigengenes.m$eigengene = as.numeric(eigengenes.m$eigengene)
+p = ggplot(eigengenes.m,aes(x=variable,y=eigengene))+geom_tile(aes(fill=value))+scale_fill_gradient2(low="blue",mid="white",high="red",midpoint=0, name="Fold Change")+scale_y_reverse()
+
+d = s.p$d
+max.var = sum(s.p$d)
+d.scale = sapply(d, function(x) {x/max.var})
+
+d.scale = as.data.frame(d.scale)
+d.scale$eigengene = factor(seq(1,8,1),levels=seq(8,1,-1))
+
+m = ggplot(d.scale,aes(x=eigengene,y=d.scale))+geom_bar()+coord_flip()+ylab("Eigenexpression Fraction")+theme_bw()
+
+eigengenes.m.top = eigengenes.m[which(eigengenes.m$eigengene %in% c(1,2)),]
+eigengenes.m.top = droplevels(eigengenes.m.top)
+eigengenes.m.top$variable=rep(c(0,5,10,15,20,30,45,60),each=2)
+eigengenes.m.top$eigengene = as.factor(eigengenes.m.top$eigengene)
+z = ggplot(eigengenes.m.top,aes(x=variable,y=value,group=eigengene))+geom_path(aes(colour=eigengene))+geom_hline(aes(yintercept=0),linetype="dashed")+ylab("fold change")+xlab("time (min.)")+theme_bw()+opts(legend.position="bottom")
+
+pmz = grid.arrange(p,m,z,ncol=3)
+print(pmz)
+@
+\caption{SVD on phosphate-limited control arrays.}
+\label{fig:psvd}
+\end{sidewaysfigure}
+
+\subsection*{Correlation of gene expression with eigengenes.}
+I would like to know which genes in each of the 4ZEV arrays correspond to each of the top three eigengenes. To do so, I will correlate each gene's expression pattern with each of the top three eigengenes.
+
+\begin{figure}
+<<eigengenes-carbon,echo=FALSE,fig.width=3,fig.height=7>>=
+eigengenes = t(s.c$v)
+row.names(eigengenes) = c(1,2,3,4,5,6,7,8)
+colnames(eigengenes) = c("t_0","t_5","t_10","t_15","t_20","t_30","t_45","t_60")
+z.c.12416=dropLow(zeroNorm(c.12416),1)
+
+c.corr.mat = EigCor(eigengenes,z.c.12416,3)
+thresh=NULL
+for (i in 1:2){
+  thresh=c(thresh,findThresh(z.c.12416,eigengenes,i,0.95,10))
+}
+match.eig1 = z.c.12416[names(c.corr.mat[which(c.corr.mat[,1] >= thresh[1]),1]),]
+rownames(match.eig1) = orf2name(rownames(match.eig1))
+match.eig2 = z.c.12416[names(c.corr.mat[which(c.corr.mat[,2] >= thresh[2]),2]),]
+rownames(match.eig2) = orf2name(rownames(match.eig2))
+ggheat("carbon_eig1.pdf",match.eig1,colors=c("blue","white","red"))
+ggheat("carbon_eig2.pdf",match.eig2,colors=c("blue","white","red"))
+@
+\caption{Expression patterns of genes correlated with eigenvector 1 (left) and eigenvector 2 (right) for carbon-limited 4ZEV strains.}
+\end{figure}
+
+
+\begin{figure}
+<<ploteigs,echo=FALSE,fig.width=3,fig.height=3>>=
+plotEigs(eigengenes,1,match.eig1)
+plotEigs(eigengenes,2,match.eig2)
+@
+\caption{Expression patterns of genes correlated with eigenvector 1 (left) and eigenvector 2 (right) for carbon-limited 4ZEV strains.}
+\end{figure}
+
+There appear to be two eigengenes that explain the majority of the variance in the carbon-limited 4ZEV chemostat time course. The main is a strong repression signal, and the second appears to be brief induction followed by lasting repression. When I identified genes whose signal was correlated with each eigengene (using a p-value of 0.05 calculated by permutation testing), eigenvector 2 appears to be actually made up of two different clusters: one cluster consistening of genes who appear to be undergoing a delayed repression, and one of a rapid and transient induction.
+
+I used SGD's GOSlim tool to test for GO term enrichment in each group, and found that many of the genes in clustering with eigengene 1 are of biological process unknown, carbohydrate metabolic process(AMS1, ARA1, ATH1, CDC19, CIT2, ENO1, ENO2, FBA1, GCY1, GDB1, GID7, GLC3, GLG1, GLK1, GND1, GND2, GPH1, GPM1, GRE3, GSY1, GSY2, GUT1, GUT2, HSP104, HXK1, IGD1, IMA1, MDH3, NDE2, NTH2, OPI10, PDC1, PFK1, PFK26, PGI1, PGK1, PGM2, PIG2, PSK1, SHC1, SOL3, SOL4, TAL1, TDH1, TDH2, TDH3, TKL2, TPI1, TPS1, TPS2, TPS3, TSL1, UBC8, UGP1, VID28, VID30, YJR096W, YLR345W, YPR1
+), response to chemical stimulus (ACT1, ADR1, AHP1, BXI1, CCP1, CCW12, CDC48, CTA1, CTT1, ETP1, GAD1, GCY1, GND1, GRE3, GRX2, HBT1, HSP104, HSP12, HYR1, KIN82, LAP3, MCR1, MDG1, PDR10, PDR15, PRX1, ROD1, SNQ2, SOD1, SPI1, TRR2, TRX2, TRX3, TSA2, UGA2, USV1, YDL124W, YJR096W, YPR1), and generation of precursor metabolites and energy (AAC1, ACS1, CDC19, CIT1, ENO1, ENO2, ETR1, FBA1, GDB1, GLC3, GLG1, GLK1, GPH1, GPM1, GSY1, GSY2, HXK1, IGD1, ISF1, LSC1, NDE2, PDC1, PET10, PFK1, PFK26, PGI1, PGK1, PGM2, PIG2, PSK1, RGI1, RGI2, SHY1, TDH1, TDH2, TDH3, TPI1, UGP1, YLR345W).
+
+For eigengene 2, the cluster which is repressed is enriched in cellular amino acid metabolic process (ADH2, ALD2, ALD3, CAR2, GAD1, GDH3, GLT1, GTT1, LAP3, PDC6, YAT1), nucleobase containing small molecule metabolic process (ADH2, ALD4, ATP6, GND2, IRA2, OLI1, RNR3, SOL3, TKL2), response to chemical stimulus (GAD1, HBT1, HSP12, HYR1, LAP3, SPI1, TRX3, TSA2), and carbohydrate metabolic process (CDC19, GND2, SHC1, SOL3, TDH2, TDH3, TKL2).
+
+The cluster which is transiently activated is highly enriched in rRNA processing, various terms associated with ribosomal biogenesis.
+
+I am also interested in seeing how my data correspond to the 2006 Ronen paper, so I will subset the data associated with each gene expression pattern she observed.
+
+\begin{figure}
+\centering
+<<ronengenes,echo=FALSE, fig.width=6, fig.height=7>>=
+r.c.12416 = c.12416
+rownames(r.c.12416) = orf2name(rownames(r.c.12416))
+
+#A - GAL genes
+gA = c("GAL1", "GAL2", "GAL3", "GAL7", "GAL10")
+sel = (rownames(r.c.12416) %in% gA)
+gA.dat = r.c.12416[sel,]
+a = ggplot()
+#none change by 2-fold in data set
+
+#B- TCA cycle genes
+gB = c("ACO1", "CIT1", "CIT3", "FUM1","IDH1", "IDH2", "KGD1", "KGD2", "MDH1", "SDH1", "SDH2", "SDH3", "SDH4")
+sel = (rownames(r.c.12416) %in% gB)
+gB.dat = r.c.12416[sel,]
+gB.dat = melt(gB.dat)
+gB.dat$Var2 = rep(c(0,5,10,15,20,30,45,60),each=sum(sel))
+b = ggplot(gB.dat,aes(x=Var2,y=value,group=Var1))+geom_hline(aes(yintercept=0),linetype="dashed")+geom_line(aes(colour=Var1))+theme_bw()+opts(title="TCA Cycle Genes")
+
+#C - Glucose transporters
+gC = c("HXT1", "HXT2", "HXT4", "HXT7")
+sel = (rownames(r.c.12416) %in% gC)
+gC.dat = r.c.12416[sel,]
+gC.dat = melt(gC.dat)
+gC.dat$Var2 = rep(c(0,5,10,15,20,30,45,60),each=sum(sel))
+c = ggplot(gC.dat,aes(x=Var2,y=value,group=Var1))+geom_hline(aes(yintercept=0),linetype="dashed")+geom_line(aes(colour=Var1))+theme_bw()+opts(title="Glucose Transporters")
+
+#D - gluconeogenesis
+gD = c("MLS1", "MDH2", "CAT2", "IDP2", "SFC1", "JEN1", "FBP1")
+sel = (rownames(r.c.12416) %in% gD)
+gD.dat = r.c.12416[sel,]
+gD.dat = melt(gD.dat)
+gD.dat$Var2 = rep(c(0,5,10,15,20,30,45,60),each=sum(sel))
+d = ggplot(gD.dat,aes(x=Var2,y=value,group=Var1))+geom_hline(aes(yintercept=0),linetype="dashed")+geom_line(aes(colour=Var1))+theme_bw()+opts(title="Gluconeogenesis")
+
+#E - bidirectional response
+gE = c("MTH1", "HXK2", "HXK1", "SUC2")
+sel = (rownames(r.c.12416) %in% gE)
+gE.dat = r.c.12416[sel,]
+gE.dat = melt(gE.dat)
+gE.dat$Var2 = rep(c(0,5,10,15,20,30,45,60),each=sum(sel))
+e = ggplot(gE.dat,aes(x=Var2,y=value))+geom_hline(aes(yintercept=0),linetype="dashed")+geom_line()+theme_bw()+opts(title="Bidirectional Response - HXK1")
+#only HXK1 in data set
+
+#F - iron homeostasis
+gF = c("FIT2","FIT3","ARN1", "SIT1", "HMX1", "FRE1", "FRE2", "FRE5", "ENB1", "PCA1")
+sel = (rownames(r.c.12416) %in% gF)
+gF.dat = r.c.12416[sel,]
+gF.dat = melt(gF.dat)
+gF.dat$Var2 = rep(c(0,5,10,15,20,30,45,60),each=sum(sel))
+f = ggplot(gF.dat,aes(x=Var2,y=value,group=Var1))+geom_hline(aes(yintercept=0),linetype="dashed")+geom_line(aes(colour=Var1))+theme_bw() + opts(title="Iron Homeostatsis")
+
+all = grid.arrange(b,c,d,e,f)
+print(all)
+
+@
+\caption{Expression of genes in the Carbon-limited 12416 chemostats from clusters identified in Ronen 2006.}
+\end{figure}
+
+\begin{figure}
+<<eigengenes-phosphate,echo=FALSE,fig.width=3,fig.height=3>>=
+eigengenes = t(s.p$v)
+row.names(eigengenes) = c(1,2,3,4,5,6,7,8)
+colnames(eigengenes) = c("t_0","t_5","t_10","t_15","t_20","t_30","t_45","t_60")
+z.p.12416=dropLow(zeroNorm(p.12416),1)
+
+p.corr = EigCor(eigengenes,z.p.12416,3)
+thresh=NULL
+for (i in 1:3){
+  thresh=c(thresh,findThresh(z.p.12416,eigengenes,i,0.85,10))
+}
+match.eig1 = z.p.12416[names(p.corr[which(p.corr[,1] >= thresh[1]),1]),]
+rownames(match.eig1) = orf2name(rownames(match.eig1))
+match.eig2 = z.p.12416[names(p.corr[which(p.corr[,2] >= thresh[2]),2]),]
+rownames(match.eig2) = orf2name(rownames(match.eig2))
+ggheat("phosphate_eig1.pdf",match.eig1,colors=c("blue","white","red"))
+ggheat("phosphate_eig2.pdf",match.eig2,colors=c("blue","white","red"))
+@
+\caption{Expression patterns of genes correlated with eigenvector 1 (left) and eigenvector 2 (right) for phosphate-limited 4ZEV strains.}
+\end{figure}
+
+\begin{figure}
+<<w,echo=FALSE,fig.width=3,fig.height=3>>=
+plotEigs(eigengenes,1,match.eig1)
+plotEigs(eigengenes,2,match.eig2)
+@
+\caption{Expression patterns of genes correlated with eigenvector 1 (left) and eigenvector 2 (right) for phosphate-limited 4ZEV strains.}
+\end{figure}
+
+%-------------------------------------------------------------------------------------------------------------------
+\section*{Analysis of 4ZEV$_{pr}$-SNF1 data with 4ZEV signal removed.}
+%-------------------------------------------------------------------------------------------------------------------
+\begin{figure}
+\centering
+<<p8,echo=FALSE,fig.height=9,fig.width=4>>=
+u = s.c$u
+d = s.c$d
+v = s.c$v
+d[3:8]=0
+new.m = u%*%diag(d)%*%t(v)
+c.424.new = c.12424-new.m
+c.424.new = dropLow(c.424.new,1)
+write.table(c.424.new,"SVD_norm_carbon.txt",sep="\t",quote=F)
+rownames(c.424.new) = orf2name(rownames(c.424.new))
+p = ggheat("filtered_c_dat.pdf",c.424.new,c("blue","white","red"))
+print(p)
+@
+\caption{Carbon-limited 4ZEVpr-SNF1 with control top two eigengenes subtracted}
+\end{figure}
+
+\begin{figure}
+\centering
+<<p9,echo=FALSE,fig.height=9,fig.width=4>>=
+u = s.p$u
+d = s.p$d
+v = s.p$v
+d[4:8]=0
+new.m = u%*%diag(d)%*%t(v)
+p.424.new = p.12424-new.m
+p.424.new = dropLow(p.424.new,1)
+write.table(p.424.new,"SVD_norm_phosphate.txt",sep="\t",quote=F)
+rownames(p.424.new) = orf2name(rownames(p.424.new))
+p = ggheat("filtered_p_dat.pdf",p.424.new,c("blue","white","red"))
+print(p)
+@
+\caption{Phosphate-limited 4ZEVpr-Snf1 with control top two eigengenes subtracted}
+\end{figure}
+
+After subtracting the top-three eigengenes of the respective control data sets from the experimental data sets, there are still \Sexpr{nrow(c.424.new)} genes which change by at least 2-fold in the carbon-limited data set, and \Sexpr{nrow(p.424.new)} genes which change by at least 2-fold in the phosphate-limited data set. There are \Sexpr{length(intersect(rownames(p.424.new), rownames(c.424.new)))} genes which change by at least 2-fold in both conditions.
+<<p10, results='asis'>>=
+tab = xtable(data.frame(ORF=unlist(orf2name(intersect(rownames(p.424.new), rownames(c.424.new))))))
+print(tab,tabular.environment='longtable',floating=FALSE,include.rownames=FALSE)
+@
+
+
+\end{document}
