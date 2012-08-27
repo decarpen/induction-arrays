@@ -16,6 +16,7 @@ zeroNorm <- function(x) {
   
 }
 
+#--------------------------------------------------------------------------------
 dropLow <- function(x, min) {
   #Removes all data that changes less than the min value.
   #
@@ -37,23 +38,36 @@ dropLow <- function(x, min) {
   return(x[sel,])
 }
 
+#--------------------------------------------------------------------------------
 fixNames <- function(x) {
+	#Cleans up annotations downloaded from PUMAdb. (Turns "YDR477W || SNF1" into "YDR477W")
+	#
+	#Args:
+	#  x: a vector of character strings to be cleaned.
+	#
+	#Returns:
+	#  orf: the vector of cleaned strings.
+	
   orf=NULL
   x.split = strsplit(as.character(x)," ||",fixed=TRUE)
   for (i in 1:length(x.split)) {
     orf[i]=x.split[[i]][1]
   }
-#   for (i in 1:length(x.split)) {
-#     if (nchar(x.split[[i]][2])==1){
-#       orf[i]=x.split[[i]][1]
-#     } else {orf[i]=x.split[[i]][2]}
-#   }
-#  trim <- function(x) gsub("^\\s+|\\s+$","",x)
-#  orf = sapply(orf,trim)
   return(orf)
 }
 
+#--------------------------------------------------------------------------------
 orf2name <- function(x) {
+	#Uses Bioconductor database "org.Sc.sgd.db" to convert ORF names to standard gene names.
+	#
+	#Args:
+	#  x: a vector of ORF names
+	#
+	#Returns:
+	# a list of standard gene names and ORF names (for those without standard names)
+  
+  require(org.Sc.sgd.db)
+  
   d = org.Sc.sgdGENENAME
   mapped_genes <- mappedkeys(d)
   dd = as.list(d[mapped_genes])
@@ -65,13 +79,31 @@ orf2name <- function(x) {
     }))
 }
 
+#--------------------------------------------------------------------------------
 orf2desc <- function(x) {
+  	#Uses Bioconductor database "org.Sc.sgd.db" to convert ORF names to gene descriptions.
+	#
+	#Args:
+	#  x: a vector of ORF names
+	#
+	#Returns:
+	# a list of gene descriptions for those names
+  
+  require(org.Sc.sgd.db)
+  
   d = org.Sc.sgdDESCRIPTION
   mapped_probes <- mappedkeys(d)
   dd = as.list(d[mapped_probes])
   return(sapply(x, function(x) {dd[as.character(x)][[1]]}))
 }
 
+
+#--------------------------------------------------------------------------------
+#STILL WORKING ON THESE BELOW...
+#--------------------------------------------------------------------------------
+
+
+#--------------------------------------------------------------------------------
 orf2entrez <- function(x) {
   d = org.Sc.sgdENTREZID
   mapped_probes <- mappedkeys(d)
@@ -87,6 +119,7 @@ orf2entrez <- function(x) {
   return(genelist)
 }
 
+#--------------------------------------------------------------------------------
 goHyperTest <- function(genelist, geneuniverse) {
   frame = toTable(org.Sc.sgdGO)
   goframeData = data.frame(frame$go_id, frame$Evidence, frame$systematic_name)
@@ -106,6 +139,7 @@ TestCor <- function(eig,dat){
   return(m)
 }
 
+#--------------------------------------------------------------------------------
 EigCor <- function(eigengenes,data,ntotest) {
   corr.mat = matrix(0,nrow(data),ntotest)
   for (i in 1:ntotest){
@@ -116,6 +150,7 @@ EigCor <- function(eigengenes,data,ntotest) {
   return(corr.mat)
 }
 
+#--------------------------------------------------------------------------------
 findThresh <- function(dat,eigengenes,neigen,thresh,nrep) {
   p.corr=NULL
   for (i in 1:nrep){
@@ -128,6 +163,7 @@ findThresh <- function(dat,eigengenes,neigen,thresh,nrep) {
   return(quantile(p.corr,thresh))
 }
 
+#--------------------------------------------------------------------------------
 plotEigs <- function(eigengene,neigen,eigenmatch) {
   match.eig1 = eigenmatch
   eig.melt = data.frame(eigengene=neigen,eigengenes[neigen,],variable=rep(c(0,5,10,15,20,30,45,60),each=1))
