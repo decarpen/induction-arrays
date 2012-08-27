@@ -15,12 +15,13 @@ ggheat = function(dat, colors=c("blue","white","red"), dist.method='spearman',
   
   require(ggplot2)
   require(cba)
+  require(reshape2)
   
   	if (dist.method=='euclidean') {
   		d = dist(dat)
   	}
   	else {
-  		d = 1-cor(dat,method='spearman')
+  		d = 1-cor(t(dat),method='spearman')
   		d = as.dist(d)
   	}
   	
@@ -53,7 +54,7 @@ ggheat = function(dat, colors=c("blue","white","red"), dist.method='spearman',
         scale_fill_gradient2(low=colors[1],mid=colors[2],high=colors[3],midpoint=0, name="Fold Change") +
   		scale_colour_gradient2(low=colors[1],mid=colors[2],high=colors[3],midpoint=0, name="Fold Change")
 
-  if (!is.null(file.name) {
+  if (!is.null(file.name)) {
   	ggsave(filename=file.name, width=win.width, height=win.height)
   }
   
